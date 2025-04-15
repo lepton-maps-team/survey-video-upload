@@ -1,0 +1,75 @@
+.upload-container {
+  transition: all 0.3s ease;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.upload-container.uploading {
+  opacity: 0.8;
+}
+
+.uppy-Dashboard-inner {
+  border: 2px dashed #e2e8f0 !important;
+  background-color: #f8fafc !important;
+}
+
+.uppy-Dashboard-dropFilesHereHint {
+  color: #64748b !important;
+}
+
+.uppy-Dashboard-browse {
+  color: #3b82f6 !important;
+}
+
+.uppy-Dashboard-Item-previewInnerWrap {
+  background-color: #f1f5f9 !important;
+}
+
+.uppy-Dashboard-browse:hover {
+  color: #2563eb !important;
+}
+
+.uppy-Dashboard-AddFiles-title {
+  color: #334155 !important;
+  font-weight: 500 !important;
+}
+
+.uppy-Dashboard-Item-name {
+  color: #334155 !important;
+}
+
+.uppy-Dashboard-Item-statusSize {
+  color: #64748b !important;
+}
+
+.uppy-c-btn-primary {
+  background-color: #3b82f6 !important;
+}
+
+.uppy-c-btn-primary:hover {
+  background-color: #2563eb !important;
+}
+
+.uppy-StatusBar {
+  background-color: #f8fafc !important;
+}
+
+.uppy-StatusBar-content {
+  color: #475569 !important;
+}
+
+.uppy-StatusBar-statusPrimary {
+  color: #334155 !important;
+}
+
+.uppy-StatusBar-statusSecondary {
+  color: #64748b !important;
+}
+
+.uppy-StatusBar-actions button {
+  color: #3b82f6 !important;
+}
+
+.uppy-Dashboard:not(.uppy-size--md) .uppy-Dashboard-Item {
+  border-bottom: 1px solid #f1f5f9 !important;
+} 

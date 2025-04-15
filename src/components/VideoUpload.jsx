@@ -3,6 +3,7 @@ import { Dashboard } from '@uppy/react'
 import { useUppyWithSupabase } from '../hooks/useUppyWithSupabase'
 import "@uppy/core/dist/style.min.css"
 import "@uppy/dashboard/dist/style.min.css"
+import "../styles/VideoUpload.css"
 
 function VideoUpload({ surveyId, onUploadComplete }) {
   const [isUploading, setIsUploading] = useState(false)
@@ -51,9 +52,12 @@ function VideoUpload({ surveyId, onUploadComplete }) {
         inline={true}
         // showProgressDetails={true}
         proudlyDisplayPoweredByUppy={false}
-        height={150}
-        width={300}
+        height={180}
+        width="100%"
         showRemoveButtonAfterComplete={false}
+        theme="light"
+        showLinkToFileUploadResult={false}
+        className="uppy-dashboard-wrapper"
       />
     </div>
   )
