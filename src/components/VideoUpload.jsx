@@ -5,12 +5,14 @@ import "@uppy/core/dist/style.min.css"
 import "@uppy/dashboard/dist/style.min.css"
 import "../styles/VideoUpload.css"
 
-function VideoUpload({ surveyId, onUploadComplete }) {
+function VideoUpload({ surveyId, onUploadComplete, accessToken }) {
   const [isUploading, setIsUploading] = useState(false)
   
   const uppy = useUppyWithSupabase({
     bucketName: 'videos',
-    folder: surveyId
+    folder: surveyId,
+    accessToken: accessToken,
+    surveyId: surveyId
   })
 
   const handleComplete = useCallback((result) => {

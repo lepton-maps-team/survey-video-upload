@@ -6,9 +6,27 @@ import { useAuth } from '../contexts/AuthContext'
 
 function Home() {
   const [surveys, setSurveys] = useState([])
+  const [filteredSurveys, setFilteredSurveys] = useState([])
   const [loading, setLoading] = useState(true)
   const [accessToken, setAccessToken] = useState(null)
+  const [searchTerm, setSearchTerm] = useState('')
   const { user, isAdmin, isManager } = useAuth()
+
+  // Helper function to format duration
+  const formatDuration = (minutes) => {
+    if (!minutes || minutes === 0) return 'N/A'
+    
+    const hours = Math.floor(minutes / 60)
+    const remainingMinutes = minutes % 60
+    
+    if (hours === 0) {
+      return `${remainingMinutes}m`
+    } else if (remainingMinutes === 0) {
+      return `${hours}h`
+    } else {
+      return `${hours}h ${remainingMinutes}m`
+    }
+  }
 
   useEffect(() => {
     if (user) {
@@ -16,6 +34,19 @@ function Home() {
       getAccessToken()
     }
   }, [user])
+
+  useEffect(() => {
+    // Filter surveys based on search term
+    if (searchTerm.trim() === '') {
+      setFilteredSurveys(surveys)
+    } else {
+      const filtered = surveys.filter(survey =>
+        survey.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (survey.gps_tracks?.name && survey.gps_tracks.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      )
+      setFilteredSurveys(filtered)
+    }
+  }, [surveys, searchTerm])
 
   const getAccessToken = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -34,9 +65,10 @@ function Home() {
           .from('surveys')
           .select(`
             *,
-            videos (*)
+            videos (*),
+            gps_tracks (id, name, duration)
           `)
-          .order('timestamp', { ascending: false })
+          .order('timestamp', { descending: true })
           
         if (error) throw error
         setSurveys(data)
@@ -47,10 +79,11 @@ function Home() {
           .from('surveys')
           .select(`
             *,
-            videos (*)
+            videos (*),
+            gps_tracks (id, name, duration)
           `)
           .eq('user_id', user.id)
-          .order('timestamp', { ascending: false })
+          .order('timestamp', { descending: true })
           
         if (ownError) throw ownError
         
@@ -70,10 +103,11 @@ function Home() {
             .from('surveys')
             .select(`
               *,
-              videos (*)
+              videos (*),
+              gps_tracks (id, name, duration)
             `)
             .in('user_id', surveyorIdList)
-            .order('timestamp', { ascending: false })
+            .order('timestamp', { descending: true })
             
           if (teamError) throw teamError
           surveyorSurveys = teamSurveys
@@ -88,10 +122,11 @@ function Home() {
           .from('surveys')
           .select(`
             *,
-            videos (*)
+            videos (*),
+            gps_tracks (id, name, duration)
           `)
           .eq('user_id', user.id)
-          .order('timestamp', { ascending: false })
+          .order('timestamp', { descending: true })
           
         if (error) throw error
         setSurveys(data)
@@ -136,8 +171,20 @@ function Home() {
 
       if (surveyError) throw surveyError
 
-      // Refresh surveys list
-      await fetchSurveys()
+      // Update only the specific survey in the state instead of refreshing all
+      setSurveys(prevSurveys => 
+        prevSurveys.map(survey => 
+          survey.id === surveyId 
+            ? { 
+                ...survey, 
+                video_id: videoData.id, 
+                is_video_uploaded: true,
+                videos: [{ id: videoData.id, name: fileName, url: publicUrl }]
+              }
+            : survey
+        )
+      )
+      
       toast.success('Video uploaded successfully!', { id: toastId })
     } catch (error) {
       console.error('Error processing upload:', error)
@@ -159,28 +206,53 @@ function Home() {
         </div>
       </div>
       
+      {/* Search Bar */}
+      <div className="search-section">
+        <div className="search-input-wrapper">
+          <input
+            type="text"
+            placeholder="Search surveys by name..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="search-input"
+          />
+          {searchTerm && (
+            <button 
+              onClick={() => setSearchTerm('')}
+              className="clear-search-btn"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+      
       <div className="surveys-table">
         <table>
           <thead>
             <tr>
               <th>Survey Name</th>
+              <th>Duration</th>
               <th>Timestamp</th>
               <th>Status</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            {surveys.length === 0 ? (
+            {filteredSurveys.length === 0 ? (
               <tr>
-                <td colSpan="4" className="empty-state">
-                  No surveys found. New surveys will appear here when created.
+                <td colSpan="5" className="empty-state">
+                  {searchTerm ? 'No surveys found matching your search.' : 'No surveys found. New surveys will appear here when created.'}
                 </td>
               </tr>
             ) : (
-              surveys.map((survey) => (
+              filteredSurveys.map((survey) => (
                 <tr key={survey.id} className="survey-row">
                   <td className="survey-name">{survey.name}</td>
-                  <td>{new Date(survey.timestamp).toLocaleString()}</td>
+                  <td className='survey-duration'>
+                    {formatDuration(survey.gps_tracks?.duration)}
+                  </td>
+                  <td>{survey.timestamp}</td>
                   <td>
                     <span className={`status-badge ${survey.video_id == null ? 'pending' : 'uploaded'}`}>
                       {survey.video_id == null ? 'Pending Upload' : 'Video Uploaded'}
