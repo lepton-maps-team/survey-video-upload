@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import VideoUpload from '../components/VideoUpload'
 import { Toaster, toast } from 'react-hot-toast'
@@ -6,11 +6,24 @@ import { useAuth } from '../contexts/AuthContext'
 
 function Home() {
   const [surveys, setSurveys] = useState([])
-  const [filteredSurveys, setFilteredSurveys] = useState([])
   const [loading, setLoading] = useState(true)
+  const [searchLoading, setSearchLoading] = useState(false)
   const [accessToken, setAccessToken] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const { user, isAdmin, isManager } = useAuth()
+
+  // Debounce utility function
+  const debounce = (func, wait) => {
+    let timeout
+    return function executedFunction(...args) {
+      const later = () => {
+        clearTimeout(timeout)
+        func(...args)
+      }
+      clearTimeout(timeout)
+      timeout = setTimeout(later, wait)
+    }
+  }
 
   // Helper function to format duration
   const formatDuration = (minutes) => {
@@ -35,55 +48,64 @@ function Home() {
     }
   }, [user])
 
+  // Debounced search function
+  const debouncedSearch = useCallback(
+    debounce((searchValue) => {
+      fetchSurveys(searchValue)
+    }, 300),
+    [user, isAdmin, isManager]
+  )
+
   useEffect(() => {
-    // Filter surveys based on search term
-    if (searchTerm.trim() === '') {
-      setFilteredSurveys(surveys)
-    } else {
-      const filtered = surveys.filter(survey =>
-        survey.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (survey.gps_tracks?.name && survey.gps_tracks.name.toLowerCase().includes(searchTerm.toLowerCase()))
-      )
-      setFilteredSurveys(filtered)
+    if (user) {
+      debouncedSearch(searchTerm)
     }
-  }, [surveys, searchTerm])
+  }, [searchTerm, debouncedSearch, user])
 
   const getAccessToken = async () => {
     const { data: { session } } = await supabase.auth.getSession()
     setAccessToken(session?.access_token)
   }
 
-  const fetchSurveys = async () => {
+  const fetchSurveys = async (searchValue = '') => {
     if (!user) return
 
     try {
-      setLoading(true)
+      if (searchValue.trim()) {
+        setSearchLoading(true)
+      } else {
+        setLoading(true)
+      }
+      
+      // Build the base query
+      let query = supabase
+        .from('surveys')
+        .select(`
+          *,
+          videos (*),
+          gps_tracks (id, name, duration)
+        `)
+
+      // Add search filter if search term is provided
+      if (searchValue.trim()) {
+        query = query.ilike('name', `%${searchValue}%`)
+      }
       
       if (isAdmin) {
         // Admin sees all surveys
-        const { data, error } = await supabase
-          .from('surveys')
-          .select(`
-            *,
-            videos (*),
-            gps_tracks (id, name, duration)
-          `)
+        const { data, error } = await query
           .order('timestamp', { descending: true })
+          .limit(100)
           
         if (error) throw error
         setSurveys(data)
       } 
       else if (isManager) {
         // Managers see their own surveys
-        const { data: ownSurveys, error: ownError } = await supabase
-          .from('surveys')
-          .select(`
-            *,
-            videos (*),
-            gps_tracks (id, name, duration)
-          `)
+        const { data: ownSurveys, error: ownError } = await query
           .eq('user_id', user.id)
           .order('timestamp', { descending: true })
+          .limit(100)
           
         if (ownError) throw ownError
         
@@ -99,7 +121,7 @@ function Home() {
         let surveyorSurveys = []
         if (surveyorIds && surveyorIds.length > 0) {
           const surveyorIdList = surveyorIds.map(s => s.user_id)
-          const { data: teamSurveys, error: teamError } = await supabase
+          let teamQuery = supabase
             .from('surveys')
             .select(`
               *,
@@ -107,7 +129,15 @@ function Home() {
               gps_tracks (id, name, duration)
             `)
             .in('user_id', surveyorIdList)
+          
+          // Add search filter for team surveys too
+          if (searchValue.trim()) {
+            teamQuery = teamQuery.ilike('name', `%${searchValue}%`)
+          }
+          
+          const { data: teamSurveys, error: teamError } = await teamQuery
             .order('timestamp', { descending: true })
+            .limit(100)
             
           if (teamError) throw teamError
           surveyorSurveys = teamSurveys
@@ -118,13 +148,7 @@ function Home() {
       } 
       else {
         // Surveyors only see their own surveys
-        const { data, error } = await supabase
-          .from('surveys')
-          .select(`
-            *,
-            videos (*),
-            gps_tracks (id, name, duration)
-          `)
+        const { data, error } = await query
           .eq('user_id', user.id)
           .order('timestamp', { descending: true })
           
@@ -136,6 +160,7 @@ function Home() {
       toast.error('Failed to load surveys')
     } finally {
       setLoading(false)
+      setSearchLoading(false)
     }
   }
 
@@ -143,9 +168,7 @@ function Home() {
     const toastId = toast.loading('Processing upload...')
     try {
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('videos')
-        .getPublicUrl(`${surveyId}/${fileName}`)
+      const publicUrl = `https://bharatnet.survey.rio.software/storage/v1/object/public/videos/${surveyId}/${fileName}`
 
       // Create video record and update survey in a transaction
       const { data: videoData, error: videoError } = await supabase
@@ -216,7 +239,10 @@ function Home() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="search-input"
           />
-          {searchTerm && (
+          {searchLoading && (
+            <div className="search-loading">Searching...</div>
+          )}
+          {searchTerm && !searchLoading && (
             <button 
               onClick={() => setSearchTerm('')}
               className="clear-search-btn"
@@ -239,14 +265,14 @@ function Home() {
             </tr>
           </thead>
           <tbody>
-            {filteredSurveys.length === 0 ? (
+            {surveys.length === 0 ? (
               <tr>
                 <td colSpan="5" className="empty-state">
                   {searchTerm ? 'No surveys found matching your search.' : 'No surveys found. New surveys will appear here when created.'}
                 </td>
               </tr>
             ) : (
-              filteredSurveys.map((survey) => (
+              surveys.map((survey) => (
                 <tr key={survey.id} className="survey-row">
                   <td className="survey-name">{survey.name}</td>
                   <td className='survey-duration'>
