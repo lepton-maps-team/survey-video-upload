@@ -12,7 +12,7 @@ import Tus from '@uppy/tus'
  * @returns {Object} uppy - Uppy instance with configured upload settings
  */
 export const useUppyWithSupabase = ({ 
-  bucketName, 
+  bucketName, z,
   folder = '', 
   restrictions = {},
   accessToken = null,
@@ -30,11 +30,11 @@ export const useUppyWithSupabase = ({
         ...restrictions
       }
     }).use(Tus, {
-      endpoint: `https://bharatnet.survey.rio.software/storage/v1/upload/resumable`,
+      endpoint: `https://uploads.signals.rio.software/files/`,
       retryDelays: [0, 3000, 5000, 10000, 20000],
-      headers: {
-        authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE`
-      },
+      // headers: {
+      //   authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE`
+      // },
       uploadDataDuringCreation: true,
       removeFingerprintOnSuccess: true,
       chunkSize: 6 * 1024 * 1024,
