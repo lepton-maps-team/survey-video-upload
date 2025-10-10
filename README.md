@@ -72,7 +72,7 @@ VALUES
 -- Set the manager_id for the surveyor (assuming the manager's user_id)
 UPDATE public.users 
 SET manager_id = (SELECT user_id FROM public.users WHERE email = 'manager@example.com')
-WHERE email = 'surveyor@example.com';
+WHERE email = 'surveyor@example.com';..
 ```
 
 **IMPORTANT**: This implementation uses plain text passwords for simplicity. In a production environment, you should hash passwords and implement proper security measures.
