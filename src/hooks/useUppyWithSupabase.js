@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Uppy from '@uppy/core'
 import Tus from '@uppy/tus'
+import { useQueueStore } from '../lib/store'
 /**
  * Custom hook for configuring Uppy with Supabase authentication and TUS resumable uploads
  * @param {Object} options - Configuration options for the Uppy instance
@@ -18,11 +19,14 @@ export const useUppyWithSupabase = ({
   accessToken = null,
   surveyId = null
 }) => {
+
+  const addToQueue = useQueueStore((state) => state.addToQueue)
+
   const [uppy] = useState(() => {
     const uniqueId = `uppy-${bucketName}-${surveyId || folder}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const instance = new Uppy({
       id: uniqueId, // Use surveyId and random string for truly unique IDs
-      autoProceed: true,
+      autoProceed: false,
       allowMultipleUploadBatches: false,
       restrictions: {
         maxNumberOfFiles: 1,
@@ -32,9 +36,6 @@ export const useUppyWithSupabase = ({
     }).use(Tus, {
       endpoint: `https://uploads.signals.rio.software/files/`,
       retryDelays: [0, 3000, 5000, 10000, 20000],
-      // headers: {
-      //   authorization: `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE`
-      // },
       uploadDataDuringCreation: true,
       removeFingerprintOnSuccess: true,
       chunkSize: 6 * 1024 * 1024,
@@ -59,13 +60,32 @@ export const useUppyWithSupabase = ({
         objectName,
         contentType: file.type,
       }
+      
+      if (surveyId) {
+        addToQueue(surveyId)
+      }
+    }
+
+    const handleError = async (error) => {
+      console.log('error', error);
+      if (surveyId) {
+        const { error: error2 } = await supabase.from("upload_errors").insert({
+          survey_id: surveyId,
+          error: JSON.stringify(error),
+        });
+        if (error2) {
+          console.error("Error inserting upload error:", error2);
+        }
+      }
     }
 
     uppy.on('file-added', handleFileAdded)
+    uppy.on('error', handleError)
     return () => {
       uppy.off('file-added', handleFileAdded)
+        uppy.off('error', handleError)
     }
-  }, [uppy, bucketName, folder])
+  }, [uppy, bucketName, folder, surveyId, addToQueue])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -73,16 +93,6 @@ export const useUppyWithSupabase = ({
       uppy.cancelAll()
     }
   }, [uppy])
-
-  // Update authorization header when accessToken changes
-  // useEffect(() => {
-  //   if (accessToken) {
-  //     const tusPlugin = uppy.getPlugin('Tus')
-  //     if (tusPlugin) {
-  //       tusPlugin.opts.headers.authorization = `Bearer ${accessToken}`
-  //     }
-  //   }
-  // }, [uppy, accessToken])
 
   return uppy
 } 
