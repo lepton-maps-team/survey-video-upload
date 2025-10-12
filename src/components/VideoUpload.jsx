@@ -31,7 +31,7 @@ function VideoUpload({ surveyId, onUploadComplete, accessToken }) {
   }, [queue, surveyId, uppy, isUploading]);
 
   const handleUploadComplete = async (surveyId, fileName, uploadId) => {
-    const toastId = toast.loading("Processing upload...");
+    //   const toastId = toast.loading("Processing upload...");
     try {
       const { data: videoData, error: videoError } = await supabase
         .from("videos")
@@ -61,10 +61,10 @@ function VideoUpload({ surveyId, onUploadComplete, accessToken }) {
 
       //  queryClient.invalidateQueries({ queryKey: ["surveys"] });
 
-      toast.success("Video uploaded successfully!", { id: toastId });
+      //   toast.success("Video uploaded successfully!", { id: toastId });
     } catch (error) {
       console.error("Error processing upload:", error);
-      toast.error("Failed to process upload", { id: toastId });
+      //  toast.error("Failed to process upload", { id: toastId });
     }
   };
 
