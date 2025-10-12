@@ -5,6 +5,7 @@ import "@uppy/core/dist/style.min.css";
 import "@uppy/dashboard/dist/style.min.css";
 import "../styles/VideoUpload.css";
 import { useQueueStore } from "../lib/store";
+import { supabase } from "../lib/supabase";
 
 function VideoUpload({ surveyId, onUploadComplete, accessToken }) {
   const [isUploading, setIsUploading] = useState(false);
