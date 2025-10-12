@@ -63,7 +63,7 @@ The application filters content based on user roles:
 ### Example SQL to create test users:
 
 ```sql
-INSERT INTO public.users (username, email, role, password)
+INSERT INTO public.users (username, email, role, password) 
 VALUES 
   ('Admin User', 'admin@example.com', 'admin', 'password123'),
   ('Manager User', 'manager@example.com', 'manager', 'password123'),
