@@ -146,6 +146,7 @@ function VideoUpload({ surveyId, onUploadComplete, accessToken }) {
         theme="light"
         showLinkToFileUploadResult={false}
         className="uppy-dashboard-wrapper"
+        doneButtonHandler={null}
       />
     </div>
   );
