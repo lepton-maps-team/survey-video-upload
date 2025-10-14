@@ -194,6 +194,8 @@ function Home() {
 
       if (surveyError) throw surveyError;
 
+      console.log("updating survey", surveyId);
+
       // Update only the specific survey in the state instead of refreshing all
       setSurveys((prevSurveys) =>
         prevSurveys.map((survey) =>

@@ -31,59 +31,59 @@ function VideoUpload({ surveyId, onUploadComplete, accessToken }) {
     }
   }, [queue, surveyId, uppy, isUploading]);
 
-  const handleUploadComplete = async (surveyId, fileName, uploadId) => {
-    //   const toastId = toast.loading("Processing upload...");
-    try {
-      const { data: videoData, error: videoError } = await supabase
-        .from("videos")
-        .insert({
-          name: fileName,
-          url: `https://cdn.bharatnet.survey.rio.software/uploads/${uploadId}`,
-          survey_id: surveyId,
-        })
-        .select()
-        .single();
+  // const handleUploadComplete = async (surveyId, fileName, uploadId) => {
+  //   //   const toastId = toast.loading("Processing upload...");
+  //   try {
+  //     const { data: videoData, error: videoError } = await supabase
+  //       .from("videos")
+  //       .insert({
+  //         name: fileName,
+  //         url: `https://cdn.bharatnet.survey.rio.software/uploads/${uploadId}`,
+  //         survey_id: surveyId,
+  //       })
+  //       .select()
+  //       .single();
 
-      if (videoError) throw videoError;
-      const { error: surveyError } = await supabase
-        .from("surveys")
-        .update({
-          video_id: videoData.id,
-          is_video_uploaded: true,
-        })
-        .eq("id", surveyId);
+  //     if (videoError) throw videoError;
+  //     const { error: surveyError } = await supabase
+  //       .from("surveys")
+  //       .update({
+  //         video_id: videoData.id,
+  //         is_video_uploaded: true,
+  //       })
+  //       .eq("id", surveyId);
 
-      await supabase.from("upload_errors").insert({
-        survey_id: surveyId,
-        error: "success",
-      });
+  //     await supabase.from("upload_errors").insert({
+  //       survey_id: surveyId,
+  //       error: "success",
+  //     });
 
-      if (surveyError) throw surveyError;
+  //     if (surveyError) throw surveyError;
 
-      //  queryClient.invalidateQueries({ queryKey: ["surveys"] });
+  //     //  queryClient.invalidateQueries({ queryKey: ["surveys"] });
 
-      //   toast.success("Video uploaded successfully!", { id: toastId });
-    } catch (error) {
-      console.error("Error processing upload:", error);
-      //  toast.error("Failed to process upload", { id: toastId });
-    }
-  };
+  //     //   toast.success("Video uploaded successfully!", { id: toastId });
+  //   } catch (error) {
+  //     console.error("Error processing upload:", error);
+  //     //  toast.error("Failed to process upload", { id: toastId });
+  //   }
+  // };
 
   const handleComplete = useCallback(
-    (result) => {
+    async (result) => {
       setIsUploading(false);
       if (result.successful?.length > 0) {
         removeFromQueue(surveyId);
         const uploadedFile = result.successful[0];
         //    console.log(uploadedFile, "uploadedFile");
-        handleUploadComplete(
+        await onUploadComplete(
           surveyId,
           uploadedFile.name,
           new URL(uploadedFile.uploadURL).pathname.slice("/files/".length)
         );
       }
     },
-    [surveyId, handleUploadComplete]
+    [surveyId, onUploadComplete]
   );
 
   const handleError = useCallback(
@@ -147,6 +147,7 @@ function VideoUpload({ surveyId, onUploadComplete, accessToken }) {
         showLinkToFileUploadResult={false}
         className="uppy-dashboard-wrapper"
         doneButtonHandler={null}
+        hideUploadButton={true}
       />
     </div>
   );
