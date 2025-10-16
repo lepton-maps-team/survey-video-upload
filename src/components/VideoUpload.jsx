@@ -79,7 +79,7 @@ function VideoUpload({ surveyId, onUploadComplete, accessToken }) {
         await onUploadComplete(
           surveyId,
           uploadedFile.name,
-          new URL(uploadedFile.uploadURL).pathname.slice("/files/".length)
+          new URL(uploadedFile.uploadURL).pathname.slice("/files/".length).split('+')[0]
         );
       }
     },
