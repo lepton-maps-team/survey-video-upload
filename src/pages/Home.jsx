@@ -26,19 +26,15 @@ function Home() {
   };
 
   // Helper function to format duration
-  const formatDuration = (minutes) => {
-    if (!minutes || minutes === 0) return "N/A";
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds === 0) return "N/A";
 
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
 
-    if (hours === 0) {
-      return `${remainingMinutes}m`;
-    } else if (remainingMinutes === 0) {
-      return `${hours}h`;
-    } else {
-      return `${hours}h ${remainingMinutes}m`;
-    }
+    return `${minutes.toString().padStart(2, "0")}:${remainingSeconds
+      .toString()
+      .padStart(2, "0")}`;
   };
 
   useEffect(() => {
@@ -302,7 +298,10 @@ function Home() {
                       <button
                         className="view-button"
                         onClick={() =>
-                          window.open(survey.videos?.[0]?.url, "_blank")
+                          window.open(
+                            `https://geotagvideo.vercel.app/preview/${survey.id}`,
+                            "_blank"
+                          )
                         }
                       >
                         View Video
