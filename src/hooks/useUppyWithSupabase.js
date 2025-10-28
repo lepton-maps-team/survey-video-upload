@@ -34,7 +34,7 @@ export const useUppyWithSupabase = ({
         ...restrictions
       }
     }).use(Tus, {
-      endpoint: `https://uploads-s3.signals.rio.software/files/`,
+      endpoint: `https://uploads.signals.rio.software/files/`,
       retryDelays: [0, 3000, 5000, 10000, 20000],
       uploadDataDuringCreation: true,
       removeFingerprintOnSuccess: true,
@@ -44,7 +44,6 @@ export const useUppyWithSupabase = ({
         'objectName',
         'contentType',
         'cacheControl',
-        'filetype',
       ]
     })
 
@@ -60,7 +59,6 @@ export const useUppyWithSupabase = ({
         bucketName,
         objectName,
         contentType: file.type,
-        filetype: file.type
       }
       
       if (surveyId) {

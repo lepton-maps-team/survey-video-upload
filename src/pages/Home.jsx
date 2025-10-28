@@ -164,7 +164,8 @@ function Home() {
     const toastId = toast.loading("Processing upload...");
     try {
       // Get public URL
-      const publicUrl = `https://ankithfdnverma.s3.cyfuture.cloud/bharatnet/${uploadId}`;
+      const publicUrl = `https://cdn.bharatnet.survey.rio.software/uploads/${uploadId}`;
+
       // Create video record and update survey in a transaction
       const { data: videoData, error: videoError } = await supabase
         .from("videos")
