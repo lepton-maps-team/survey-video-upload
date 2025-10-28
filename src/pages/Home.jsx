@@ -162,21 +162,27 @@ function Home() {
 
   const handleUploadComplete = async (surveyId, fileName, uploadId) => {
     const toastId = toast.loading("Processing upload...");
+    console.log("uploadId", uploadId);
+    console.log("fileName", fileName);
+    console.log("surveyId", surveyId);
     try {
       // Get public URL
       const publicUrl = `https://cdn.bharatnet.survey.rio.software/uploads/${uploadId}`;
+      console.log("publicUrl", publicUrl);
       // Create video record and update survey in a transaction
       const { data: videoData, error: videoError } = await supabase
         .from("videos")
         .insert({
           name: fileName,
-          url: publicUrl,
+          url: `https://cdn.bharatnet.survey.rio.software/uploads/${uploadId}`,
           survey_id: surveyId,
         })
         .select()
         .single();
 
-      if (videoError) throw videoError;
+      if (videoError) {
+        console.error("Error creating video record:", videoError);
+      }
 
       // Update survey with video_id and is_video_uploaded
       const { error: surveyError } = await supabase
@@ -187,7 +193,9 @@ function Home() {
         })
         .eq("id", surveyId);
 
-      if (surveyError) throw surveyError;
+      if (surveyError) {
+        console.error("Error updating survey:", surveyError);
+      }
 
       console.log("updating survey", surveyId);
 
