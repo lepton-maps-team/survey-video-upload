@@ -165,6 +165,8 @@ function Home() {
     try {
       // Get public URL
       const publicUrl = `https://cdn.bharatnet.survey.rio.software/uploads/${uploadId}`;
+
+      // Create video record and update survey in a transaction
       const { data: videoData, error: videoError } = await supabase
         .from("videos")
         .insert({

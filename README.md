@@ -1,7 +1,7 @@
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
+    
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
@@ -12,7 +12,7 @@ Currently, two official plugins are available:
 This application allows users to manage survey videos with role-based access control.
 
 ## Login System Implementation
-
+ 
 The application now uses a custom login system that authenticates against the `users` table in Supabase without using Supabase Auth. The system includes:
 
 1. A login page where users enter their email and password

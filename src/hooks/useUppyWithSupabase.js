@@ -44,7 +44,6 @@ export const useUppyWithSupabase = ({
         'objectName',
         'contentType',
         'cacheControl',
-        'filetype',
       ]
     })
 
@@ -60,7 +59,6 @@ export const useUppyWithSupabase = ({
         bucketName,
         objectName,
         contentType: file.type,
-        filetype: file.type
       }
       
       if (surveyId) {
