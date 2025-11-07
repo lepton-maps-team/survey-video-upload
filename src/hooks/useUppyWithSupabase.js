@@ -23,7 +23,7 @@ export const useUppyWithSupabase = ({
   const addToQueue = useQueueStore((state) => state.addToQueue)
 
   const [uppy] = useState(() => {
-    const uniqueId = `uppy-${bucketName}-${surveyId || folder}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    const uniqueId = `uppy-${bucketName}-${surveyId || folder}`
     const instance = new Uppy({
       id: uniqueId, // Use surveyId and random string for truly unique IDs
       autoProceed: false,
