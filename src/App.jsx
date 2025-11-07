@@ -45,14 +45,8 @@ function App() {
 
   const handleUploadComplete = async (surveyId, fileName, uploadId) => {
     const toastId = toast.loading("Processing upload...");
-    console.log("uploadId", uploadId);
-    console.log("fileName", fileName);
-    console.log("surveyId", surveyId);
     try {
-      // Get public URL
       const publicUrl = `https://cdn.bharatnet.survey.rio.software/uploads/${uploadId}`;
-      console.log("publicUrl", publicUrl);
-      // Create video record and update survey in a transaction
       const { data: videoData, error: videoError } = await supabase
         .from("videos")
         .insert({
@@ -67,7 +61,6 @@ function App() {
         console.error("Error creating video record:", videoError);
       }
 
-      // Update survey with video_id and is_video_uploaded
       const { error: surveyError } = await supabase
         .from("surveys")
         .update({
@@ -80,9 +73,6 @@ function App() {
         console.error("Error updating survey:", surveyError);
       }
 
-      console.log("updating survey", surveyId);
-
-      // Update only the specific survey in the state instead of refreshing all
       setSurveys((prevSurveys) =>
         prevSurveys.map((survey) =>
           survey.id === surveyId
