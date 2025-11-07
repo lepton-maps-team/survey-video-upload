@@ -75,7 +75,7 @@ function VideoUpload({ surveyId, onUploadComplete, accessToken }) {
       if (result.successful?.length > 0) {
         removeFromQueue(surveyId);
         const uploadedFile = result.successful[0];
-        //    console.log(uploadedFile, "uploadedFile");
+        console.log(uploadedFile, "uploadedFile");
         await onUploadComplete(
           surveyId,
           uploadedFile.name,

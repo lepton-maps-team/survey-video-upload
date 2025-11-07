@@ -171,15 +171,15 @@ function Home() {
         .from("videos")
         .insert({
           name: fileName,
-          url: publicUrl,
+          url: `https://cdn.bharatnet.survey.rio.software/uploads/${uploadId}`,
           survey_id: surveyId,
         })
         .select()
         .single();
 
-      if (videoError) throw videoError;
-
-      // Update survey with video_id and is_video_uploaded
+      if (videoError) {
+        console.error("Error creating video record:", videoError);
+      }
       const { error: surveyError } = await supabase
         .from("surveys")
         .update({
@@ -188,7 +188,9 @@ function Home() {
         })
         .eq("id", surveyId);
 
-      if (surveyError) throw surveyError;
+      if (surveyError) {
+        console.error("Error updating survey:", surveyError);
+      }
 
       console.log("updating survey", surveyId);
 
