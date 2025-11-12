@@ -19,17 +19,20 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
     `${STORAGE_KEY_BASE}_${surveyId || "default"}`;
   const getStorageKey = (surveyId, fileName) =>
     `${surveyId || "default"}::${fileName}`;
+
   const loadSavedUpload = (surveyId, fileName) => {
     const surveyStorageKey = getSurveyStorageKey(surveyId);
     const uploads = JSON.parse(localStorage.getItem(surveyStorageKey) || "{}");
     return uploads[getStorageKey(surveyId, fileName)];
   };
-  const saveUploadProgress = (surveyId, fileName, data) => {
+
+  const saveUploadProgress = (surveyId, fileName, data, filePath = "") => {
     const surveyStorageKey = getSurveyStorageKey(surveyId);
     const uploads = JSON.parse(localStorage.getItem(surveyStorageKey) || "{}");
-    uploads[getStorageKey(surveyId, fileName)] = data;
+    uploads[getStorageKey(surveyId, fileName)] = { ...data, filePath };
     localStorage.setItem(surveyStorageKey, JSON.stringify(uploads));
   };
+
   const clearUploadRecord = (surveyId, fileName) => {
     const surveyStorageKey = getSurveyStorageKey(surveyId);
     const uploads = JSON.parse(localStorage.getItem(surveyStorageKey) || "{}");
@@ -39,9 +42,20 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
 
   // ------------------ FILE SELECTION ------------------
   const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
+    const selectedFile = e.target.files[0];
+    setFile(selectedFile);
     setUploadProgress(0);
     setCanceled(false);
+
+    const saved = loadSavedUpload(surveyId, selectedFile.name);
+    if (saved) {
+      // Restore meta info to file object
+      selectedFile.meta = {
+        dateTimestamp: saved.dateTimestamp || new Date().toISOString(),
+        fileSizeBytes: saved.fileSizeBytes || selectedFile.size,
+      };
+      console.log("Previous upload path:", saved.filePath);
+    }
   };
 
   // ------------------ EDGE HELPERS ------------------
@@ -87,11 +101,14 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
 
   const signPart = async (file, { uploadId, partNumber }) => {
     const objectName = folder ? `${folder}/${file.name}` : file.name;
+    const fileSizeBytes = file?.meta?.fileSizeBytes || file.size;
+    const dateTimestamp = file?.meta?.dateTimestamp || new Date().toISOString();
+
     const body = await postEdge({
       fileName: objectName,
-      fileSizeBytes: file.meta.fileSizeBytes || file.size,
+      fileSizeBytes,
       fileType: file.type,
-      dateTimestamp: file.meta.dateTimestamp,
+      dateTimestamp,
       partNumber,
       uploadId,
     });
@@ -105,7 +122,7 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
       fileName: objectName,
       fileSizeBytes: file.size,
       fileType: file.type,
-      dateTimestamp: file.meta.dateTimestamp,
+      dateTimestamp: file?.meta?.dateTimestamp || new Date().toISOString(),
       partNumber: totalChunks + 1,
       uploadId: uploadData.uploadId,
       parts: uploadData.parts,
@@ -140,7 +157,13 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
           signal: controller.signal,
         });
         if (!resp.ok) throw new Error(`Upload failed: ${resp.statusText}`);
-        clearUploadRecord(surveyId, file.name);
+
+        saveUploadProgress(
+          surveyId,
+          file.name,
+          {},
+          folder ? `${folder}/${file.name}` : file.name,
+        );
         onUploadComplete(
           surveyId,
           file.name,
@@ -153,7 +176,12 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
       let uploadData = loadSavedUpload(surveyId, file.name);
       if (!uploadData) {
         uploadData = await createMultipartUpload(file);
-        saveUploadProgress(surveyId, file.name, { ...uploadData, parts: [] });
+        saveUploadProgress(
+          surveyId,
+          file.name,
+          { ...uploadData, parts: [] },
+          folder ? `${folder}/${file.name}` : file.name,
+        );
       }
 
       const uploadedPartNumbers = new Set(
@@ -199,7 +227,12 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
         for (const r of results) {
           if (r.status === "fulfilled") {
             parts.push(r.value);
-            saveUploadProgress(surveyId, file.name, { ...uploadData, parts });
+            saveUploadProgress(
+              surveyId,
+              file.name,
+              { ...uploadData, parts },
+              folder ? `${folder}/${file.name}` : file.name,
+            );
           } else if (!canceled) {
             console.error("❌ Chunk upload failed:", r.reason);
             throw r.reason;
@@ -215,12 +248,19 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
         uploadId: uploadData.uploadId,
         parts,
       });
-      clearUploadRecord(surveyId, file.name);
+      saveUploadProgress(
+        surveyId,
+        file.name,
+        { ...uploadData, parts },
+        folder ? `${folder}/${file.name}` : file.name,
+      );
+
       onUploadComplete(
         surveyId,
         file.name,
         completed.location.split(".com/")[1].split(".mp4")[0] + ".mp4",
       );
+      clearUploadRecord(surveyId, file.name);
       console.log("✅ Multipart upload complete:", completed);
     } catch (err) {
       if (err.name === "AbortError") console.log("🚫 Upload aborted.");
@@ -264,7 +304,7 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
           type="file"
           accept="video/*"
           style={{ display: "none" }}
-          onChange={handleFileChange} // ✅ fixed here
+          onChange={handleFileChange}
         />
       </label>
 
