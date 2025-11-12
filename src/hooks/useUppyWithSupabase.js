@@ -5,7 +5,7 @@ import Tus from "@uppy/tus";
 import { useQueueStore } from "../lib/store";
 import { supabase } from "../lib/supabase";
 
-const EDGE_FUNCTION_URL = import.meta.env.VITE_SUPABASE_URL + "/" + import.meta.env.VITE_EDGE_FUNCTION;
+const EDGE_FUNCTION_URL = import.meta.env.VITE_EDGE_FUNCTION;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
@@ -62,7 +62,7 @@ export const useUppyWithSupabase = ({
 
           if (!resp.ok) {
             throw new Error(
-              `Init (single) failed: ${resp.status} ${await resp.text()}`
+              `Init (single) failed: ${resp.status} ${await resp.text()}`,
             );
           }
 
@@ -99,7 +99,7 @@ export const useUppyWithSupabase = ({
 
           if (!resp.ok)
             throw new Error(
-              `Init (multipart) failed: ${resp.status} ${await resp.text()}`
+              `Init (multipart) failed: ${resp.status} ${await resp.text()}`,
             );
           const body = await resp.json();
 
@@ -131,7 +131,7 @@ export const useUppyWithSupabase = ({
 
           if (!resp.ok)
             throw new Error(
-              `Sign part ${partNumber} failed: ${resp.status} ${await resp.text()}`
+              `Sign part ${partNumber} failed: ${resp.status} ${await resp.text()}`,
             );
           const body = await resp.json();
           return { url: body.uploadUrl };
@@ -141,7 +141,7 @@ export const useUppyWithSupabase = ({
         completeMultipartUpload: async (file, uploadData) => {
           const objectName = folder ? `${folder}/${file.name}` : file.name;
           const totalChunks = Math.ceil(
-            (file.meta.fileSizeBytes || file.size) / CHUNK_SIZE
+            (file.meta.fileSizeBytes || file.size) / CHUNK_SIZE,
           );
 
           const resp = await fetch(EDGE_FUNCTION_URL, {
@@ -164,7 +164,7 @@ export const useUppyWithSupabase = ({
 
           if (!resp.ok)
             throw new Error(
-              `Complete failed: ${resp.status} ${await resp.text()}`
+              `Complete failed: ${resp.status} ${await resp.text()}`,
             );
           const body = await resp.json();
           return { location: body.location };
@@ -215,7 +215,12 @@ export const useUppyWithSupabase = ({
   useEffect(() => {
     const handleFileAdded = (file) => {
       const objectName = folder ? `${folder}/${file.name}` : file.name;
-      file.meta = { ...file.meta, bucketName, objectName, contentType: file.type };
+      file.meta = {
+        ...file.meta,
+        bucketName,
+        objectName,
+        contentType: file.type,
+      };
       if (surveyId) addToQueue(surveyId);
     };
 
