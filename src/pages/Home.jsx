@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import VideoUpload from "../components/VideoUpload";
 import { Toaster, toast } from "react-hot-toast";
 import { useAuth } from "../contexts/AuthContext";
+import VideoUploadResumable from "../components/VideoUploadResumable";
 
 function Home() {
   const [surveys, setSurveys] = useState([]);
@@ -49,7 +50,7 @@ function Home() {
     debounce((searchValue) => {
       fetchSurveys(searchValue);
     }, 300),
-    [user, isAdmin, isManager]
+    [user, isAdmin, isManager],
   );
 
   useEffect(() => {
@@ -123,7 +124,7 @@ function Home() {
               *,
               videos (*),
               gps_tracks (id, name, duration)
-            `
+            `,
             )
             .in("user_id", surveyorIdList);
 
@@ -204,8 +205,8 @@ function Home() {
                 is_video_uploaded: true,
                 videos: [{ id: videoData.id, name: fileName, url: publicUrl }],
               }
-            : survey
-        )
+            : survey,
+        ),
       );
 
       toast.success("Video uploaded successfully!", { id: toastId });
@@ -292,10 +293,11 @@ function Home() {
                   </td>
                   <td>
                     {survey.video_id == null ? (
-                      <VideoUpload
+                      <VideoUploadResumable
                         surveyId={survey.id}
                         onUploadComplete={handleUploadComplete}
                         accessToken={accessToken}
+                        folder={survey.id}
                       />
                     ) : (
                       <button
@@ -303,7 +305,7 @@ function Home() {
                         onClick={() =>
                           window.open(
                             `https://geotagvideo.vercel.app/preview/${survey.id}`,
-                            "_blank"
+                            "_blank",
                           )
                         }
                       >

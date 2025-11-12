@@ -22,7 +22,6 @@ export const useUppyWithSupabase = ({
 
   const [uppy] = useState(() => {
     const uniqueId = `uppy-${bucketName}-${surveyId || folder}`;
-
     const instance = new Uppy({
       id: uniqueId,
       autoProceed: false,
@@ -34,13 +33,12 @@ export const useUppyWithSupabase = ({
       },
     });
 
-    // ✅ Supabase Edge Function + Cloudflare R2 multipart logic
+    // ---- AWS S3 (R2 / Supabase Edge Function) ----
     if (useS3) {
       instance.use(AwsS3, {
         shouldUseMultipart: (file) => file.size > MULTIPART_THRESHOLD,
         getChunkSize: () => CHUNK_SIZE,
 
-        // --- Single PUT presigned upload ---
         getUploadParameters: async (file) => {
           const ts = new Date().toISOString();
           const objectName = folder ? `${folder}/${file.name}` : file.name;
@@ -77,7 +75,6 @@ export const useUppyWithSupabase = ({
           };
         },
 
-        // --- Multipart Upload: init ---
         createMultipartUpload: async (file) => {
           const ts = new Date().toISOString();
           const objectName = folder ? `${folder}/${file.name}` : file.name;
@@ -101,17 +98,17 @@ export const useUppyWithSupabase = ({
             throw new Error(
               `Init (multipart) failed: ${resp.status} ${await resp.text()}`,
             );
-          const body = await resp.json();
 
+          const body = await resp.json();
           file.meta.dateTimestamp = ts;
           file.meta.fileSizeBytes = file.size;
 
           return { uploadId: body.uploadId, key: body.fileKey };
         },
 
-        // --- Sign each part ---
         signPart: async (file, { uploadId, partNumber }) => {
           const objectName = folder ? `${folder}/${file.name}` : file.name;
+
           const resp = await fetch(EDGE_FUNCTION_URL, {
             method: "POST",
             headers: {
@@ -133,11 +130,40 @@ export const useUppyWithSupabase = ({
             throw new Error(
               `Sign part ${partNumber} failed: ${resp.status} ${await resp.text()}`,
             );
+
           const body = await resp.json();
           return { url: body.uploadUrl };
         },
 
-        // --- Complete multipart upload ---
+        listParts: async (file, { uploadId }) => {
+          const objectName = folder ? `${folder}/${file.name}` : file.name;
+
+          const resp = await fetch(EDGE_FUNCTION_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+              apikey: SUPABASE_ANON_KEY,
+            },
+            body: JSON.stringify({
+              action: "listParts",
+              uploadId,
+              fileName: objectName,
+              fileSizeBytes: file.meta.fileSizeBytes || file.size,
+              fileType: file.type,
+              dateTimestamp: file.meta.dateTimestamp,
+            }),
+          });
+
+          if (!resp.ok)
+            throw new Error(
+              `List parts failed: ${resp.status} ${await resp.text()}`,
+            );
+
+          const body = await resp.json();
+          return { parts: body.parts || [] };
+        },
+
         completeMultipartUpload: async (file, uploadData) => {
           const objectName = folder ? `${folder}/${file.name}` : file.name;
           const totalChunks = Math.ceil(
@@ -166,11 +192,11 @@ export const useUppyWithSupabase = ({
             throw new Error(
               `Complete failed: ${resp.status} ${await resp.text()}`,
             );
+
           const body = await resp.json();
           return { location: body.location };
         },
 
-        // --- Abort upload if cancelled ---
         abortMultipartUpload: async (file, { uploadId }) => {
           const objectName = folder ? `${folder}/${file.name}` : file.name;
           try {
@@ -197,7 +223,7 @@ export const useUppyWithSupabase = ({
       });
     }
 
-    // ✅ fallback: TUS (if needed)
+    // ---- Fallback: Tus ----
     else {
       instance.use(Tus, {
         endpoint: `https://uploads.signals.rio.software/files/`,
@@ -236,17 +262,33 @@ export const useUppyWithSupabase = ({
 
     uppy.on("file-added", handleFileAdded);
     uppy.on("error", handleError);
-
     uppy.on("complete", (result) => {
       console.log("Upload complete:", result);
     });
 
+    // ✅ Auto pause/resume on network loss
+    const handleOffline = () => {
+      console.warn("⚠️ Internet lost — pausing all uploads");
+      uppy.pauseAll();
+    };
+
+    const handleOnline = () => {
+      console.info("✅ Internet restored — resuming uploads");
+      uppy.resumeAll();
+    };
+
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+
     return () => {
       uppy.off("file-added", handleFileAdded);
       uppy.off("error", handleError);
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
     };
   }, [uppy, bucketName, folder, surveyId, addToQueue]);
 
+  // Cancel uploads on unmount
   useEffect(() => {
     return () => uppy.cancelAll();
   }, [uppy]);
