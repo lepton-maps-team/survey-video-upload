@@ -3,6 +3,7 @@ import { useState, useRef } from "react";
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
 const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100MB
 const CONCURRENCY = 4;
+const MAX_FILE_SIZE = 50 * 1024 * 1024 * 1024; // 5GB limit
 const EDGE_FUNCTION_URL =
   "https://xengyefjbnoolmqyphxw.supabase.co/functions/v1/test-abd-r2";
 const SUPABASE_ANON_KEY =
@@ -11,12 +12,12 @@ const STORAGE_KEY_BASE = "resumable_uploads_v2";
 
 const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
   const [file, setFile] = useState(null);
+  const [error, setError] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
-  const [canceled, setCanceled] = useState(false);
+  const canceledRef = useRef(false);
   const abortControllers = useRef([]);
 
-  // ------------------ STORAGE HELPERS ------------------
   const getSurveyStorageKey = (surveyId) =>
     `${STORAGE_KEY_BASE}_${surveyId || "default"}`;
   const getStorageKey = (surveyId, fileName) =>
@@ -42,12 +43,56 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
     localStorage.setItem(surveyStorageKey, JSON.stringify(uploads));
   };
 
-  // ------------------ FILE SELECTION ------------------
+  const validateFile = (selectedFile) => {
+    if (!selectedFile) {
+      return "No file selected";
+    }
+    if (selectedFile.size === 0) {
+      return "File is empty";
+    }
+    if (selectedFile.size > MAX_FILE_SIZE) {
+      return `File too large (max ${MAX_FILE_SIZE / 1024 / 1024 / 1024}GB)`;
+    }
+    if (!selectedFile.type.startsWith("video/")) {
+      return "File must be a video";
+    }
+    return null;
+  };
+
+  const extractFilePath = (url, fileName) => {
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      // Remove leading slash and return
+      return pathname.startsWith("/") ? pathname.slice(1) : pathname;
+    } catch (err) {
+      console.error("Failed to parse URL:", err);
+      // Fallback to fileName
+      return folder ? `${folder}/${fileName}` : fileName;
+    }
+  };
+
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
-    setFile(selectedFile);
+
+    // Reset state
+    setError("");
     setUploadProgress(0);
-    setCanceled(false);
+    canceledRef.current = false;
+
+    if (!selectedFile) {
+      setFile(null);
+      return;
+    }
+
+    const validationError = validateFile(selectedFile);
+    if (validationError) {
+      setError(validationError);
+      setFile(null);
+      return;
+    }
+
+    setFile(selectedFile);
 
     const saved = loadSavedUpload(surveyId, selectedFile.name);
     if (saved) {
@@ -60,7 +105,6 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
     }
   };
 
-  // ------------------ EDGE HELPERS ------------------
   const postEdge = async (bodyObj) => {
     const resp = await fetch(EDGE_FUNCTION_URL, {
       method: "POST",
@@ -132,19 +176,25 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
     return { location: body.location };
   };
 
-  // ------------------ CANCEL HANDLER ------------------
   const handleCancel = () => {
-    setCanceled(true);
-    abortControllers.current.forEach((ctrl) => ctrl.abort());
+    canceledRef.current = true;
+    abortControllers.current.forEach((ctrl) => {
+      try {
+        ctrl.abort();
+      } catch (err) {
+        console.error("Error aborting:", err);
+      }
+    });
     abortControllers.current = [];
-    setUploading(false);
   };
 
-  // ------------------ UPLOAD HANDLER ------------------
   const handleUpload = async () => {
     if (!file) return;
+
     setUploading(true);
-    setCanceled(false);
+    setError("");
+    canceledRef.current = false;
+    abortControllers.current = [];
 
     try {
       // Single PUT
@@ -152,31 +202,30 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
         const { url, headers } = await getUploadParameters(file);
         const controller = new AbortController();
         abortControllers.current.push(controller);
+
         const resp = await fetch(url, {
           method: "PUT",
           headers,
           body: file,
           signal: controller.signal,
         });
+
         if (!resp.ok) throw new Error(`Upload failed: ${resp.statusText}`);
 
-        saveUploadProgress(
-          surveyId,
-          file.name,
-          {},
-          folder ? `${folder}/${file.name}` : file.name,
-        );
-        onUploadComplete(
-          surveyId,
-          file.name,
-          url.split(".com/")[1].split(".mp4")[0] + ".mp4",
-        );
+        const filePath = extractFilePath(url, file.name);
+        saveUploadProgress(surveyId, file.name, {}, filePath);
+
+        setUploadProgress(100);
+        onUploadComplete(surveyId, file.name, filePath);
+        clearUploadRecord(surveyId, file.name);
+
+        console.log("✅ Single file upload complete");
         return;
       }
 
       // Multipart
       let uploadData = loadSavedUpload(surveyId, file.name);
-      if (!uploadData) {
+      if (!uploadData || !uploadData.uploadId) {
         uploadData = await createMultipartUpload(file);
         saveUploadProgress(
           surveyId,
@@ -191,34 +240,47 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
       );
       const totalParts = Math.ceil(file.size / CHUNK_SIZE);
       const parts = [...(uploadData.parts || [])];
+
       setUploadProgress(
         Math.round((uploadedPartNumbers.size / totalParts) * 100),
       );
 
       for (let i = 1; i <= totalParts; i += CONCURRENCY) {
-        if (canceled) throw new Error("Upload canceled by user");
+        if (canceledRef.current) {
+          throw new Error("Upload canceled by user");
+        }
 
         const batch = [];
         for (let j = i; j < i + CONCURRENCY && j <= totalParts; j++) {
           if (uploadedPartNumbers.has(j)) continue;
+
           const start = (j - 1) * CHUNK_SIZE;
           const end = Math.min(j * CHUNK_SIZE, file.size);
           const blob = file.slice(start, end);
+
           batch.push(
             (async () => {
+              if (canceledRef.current) {
+                throw new Error("Upload canceled");
+              }
+
               const { url } = await signPart(file, {
                 uploadId: uploadData.uploadId,
                 partNumber: j,
               });
+
               const controller = new AbortController();
               abortControllers.current.push(controller);
+
               const resp = await fetch(url, {
                 method: "PUT",
                 headers: { "Content-Type": "application/octet-stream" },
                 body: blob,
                 signal: controller.signal,
               });
+
               if (!resp.ok) throw new Error(`Part ${j} failed`);
+
               const eTag = resp.headers.get("ETag")?.replaceAll('"', "");
               return { ETag: eTag, PartNumber: j };
             })(),
@@ -226,16 +288,18 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
         }
 
         const results = await Promise.allSettled(batch);
+
         for (const r of results) {
           if (r.status === "fulfilled") {
             parts.push(r.value);
+            uploadedPartNumbers.add(r.value.PartNumber);
             saveUploadProgress(
               surveyId,
               file.name,
               { ...uploadData, parts },
               folder ? `${folder}/${file.name}` : file.name,
             );
-          } else if (!canceled) {
+          } else if (!canceledRef.current) {
             console.error("❌ Chunk upload failed:", r.reason);
             throw r.reason;
           }
@@ -244,139 +308,124 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
         setUploadProgress(Math.round((parts.length / totalParts) * 100));
       }
 
-      if (canceled) throw new Error("Upload canceled by user");
+      if (canceledRef.current) {
+        throw new Error("Upload canceled by user");
+      }
+
+      // Sort parts by PartNumber before completing
+      parts.sort((a, b) => a.PartNumber - b.PartNumber);
 
       const completed = await completeMultipartUpload(file, {
         uploadId: uploadData.uploadId,
         parts,
       });
-      saveUploadProgress(
-        surveyId,
-        file.name,
-        { ...uploadData, parts },
-        folder ? `${folder}/${file.name}` : file.name,
-      );
 
-      onUploadComplete(
-        surveyId,
-        file.name,
-        completed.location.split(".com/")[1].split(".mp4")[0] + ".mp4",
-      );
+      const filePath = extractFilePath(completed.location, file.name);
+
+      onUploadComplete(surveyId, file.name, filePath);
       clearUploadRecord(surveyId, file.name);
+
       console.log("✅ Multipart upload complete:", completed);
     } catch (err) {
-      if (err.name === "AbortError") console.log("🚫 Upload aborted.");
-      else console.error("❌ Upload failed:", err);
+      if (err.name === "AbortError" || canceledRef.current) {
+        console.log("🚫 Upload aborted.");
+        setError("Upload canceled");
+      } else {
+        console.error("❌ Upload failed:", err);
+        setError(err.message || "Upload failed");
+      }
     } finally {
       setUploading(false);
       abortControllers.current = [];
     }
   };
 
-  // ------------------ UI ------------------
   return (
-    <div
-      style={{
-        padding: "20px",
-        maxWidth: 480,
-        margin: "40px auto",
-        borderRadius: "12px",
-        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-        background: "#fff",
-        fontFamily: "Inter, sans-serif",
-        textAlign: "center",
-      }}
-    >
-      <label
-        style={{
-          display: "block",
-          border: "2px dashed #ccc",
-          borderRadius: "10px",
-          padding: "30px",
-          cursor: "pointer",
-          transition: "0.3s",
-        }}
-      >
-        {file ? (
-          <strong>{file.name}</strong>
-        ) : (
-          <span style={{ color: "#888" }}>Click to choose a video file</span>
-        )}
-        <input
-          type="file"
-          accept="video/*"
-          style={{ display: "none" }}
-          onChange={handleFileChange}
-        />
-      </label>
-
-      <div style={{ marginTop: 10 }}>
-        <button
-          disabled={!file || uploading}
-          onClick={handleUpload}
-          style={{
-            background: uploading ? "#ccc" : "#4caf50",
-            color: "white",
-            border: "none",
-            borderRadius: "6px",
-            cursor: uploading ? "not-allowed" : "pointer",
-            fontWeight: 600,
-            fontSize: "14px",
-            transition: "background 0.3s ease",
-          }}
+    <div className=" rounded-md overflow-hidden hover:border-slate-300 transition-colors max-w-40">
+      <div className="p-4">
+        <label
+          className={`block border-2 border-dashed rounded p-4 cursor-pointer transition-all ${
+            file
+              ? "border-green-500 bg-green-50"
+              : "border-slate-300 hover:border-blue-400 bg-slate-50"
+          } ${uploading ? "opacity-50 cursor-not-allowed" : ""}`}
         >
-          {uploading ? "Uploading..." : "Start Upload"}
-        </button>
+          <input
+            type="file"
+            accept="video/*"
+            onChange={handleFileChange}
+            className="hidden"
+            disabled={uploading}
+          />
+          <div className="text-center">
+            {file ? (
+              <div>
+                <p className="font-semibold text-slate-900 text-sm truncate">
+                  {file.name}
+                </p>
+                <p className="text-xs text-slate-600">
+                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="font-medium text-slate-700 text-sm">
+                  Click or drag video
+                </p>
+                <p className="text-xs text-slate-500 mt-1">MP4, WebM, MOV</p>
+              </>
+            )}
+          </div>
+        </label>
+        {error && (
+          <p className="text-xs text-red-600 mt-2 font-medium text-center">
+            {error}
+          </p>
+        )}
+      </div>
+
+      <div className="flex gap-2 flex-wrap p-4">
+        {!uploading && (
+          <button
+            onClick={handleUpload}
+            disabled={!file || uploading || !!error}
+            className={`text-sm rounded font-medium w-full p-2 transition-all ${
+              !file || uploading || !!error
+                ? "bg-slate-300 text-slate-500 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700 "
+            }`}
+          >
+            Upload
+          </button>
+        )}
 
         {uploading && (
           <button
             onClick={handleCancel}
-            style={{
-              marginLeft: "10px",
-              background: "#f44336",
-              color: "white",
-              border: "none",
-              padding: "10px 18px",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontWeight: 600,
-              fontSize: "14px",
-            }}
+            className="text-sm rounded font-medium w-full p-2 bg-red-600 hover:bg-red-700 transition-all"
           >
-            Cancel
+            Cancel Upload
           </button>
         )}
       </div>
 
-      {uploading && (
-        <div style={{ marginTop: 20 }}>
-          <div style={{ fontWeight: 500 }}>Progress: {uploadProgress}%</div>
-          <div
-            style={{
-              height: "12px",
-              width: "100%",
-              background: "#eee",
-              borderRadius: "8px",
-              marginTop: "8px",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "12px",
-                width: `${uploadProgress}%`,
-                background: canceled ? "#999" : "#4caf50",
-                borderRadius: "8px",
-                transition: "width 0.3s ease",
-              }}
-            ></div>
+      {uploading && file && (
+        <div className="border-t border-slate-200 px-4 py-2 bg-slate-50">
+          <div className="flex justify-between items-center mb-1">
+            <p className="text-xs font-medium text-slate-700">
+              {canceledRef.current
+                ? "Canceling..."
+                : `Uploading: ${uploadProgress}%`}
+            </p>
           </div>
-        </div>
-      )}
-
-      {canceled && (
-        <div style={{ color: "red", marginTop: "12px", fontWeight: 500 }}>
-          Upload canceled by user.
+          <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                canceledRef.current ? "bg-slate-400" : "bg-blue-600"
+              }`}
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
         </div>
       )}
     </div>
