@@ -4,10 +4,8 @@ const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
 const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100MB
 const CONCURRENCY = 4;
 const MAX_FILE_SIZE = 50 * 1024 * 1024 * 1024; // 5GB limit
-const EDGE_FUNCTION_URL =
-  "https://xengyefjbnoolmqyphxw.supabase.co/functions/v1/test-abd-r2";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhlbmd5ZWZqYm5vb2xtcXlwaHh3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAzOTYzOTEsImV4cCI6MjA1NTk3MjM5MX0.5JFYQNXFe3Jn099q_CByr0t1WogjtXXDFFVAFXr7sgY";
+const EDGE_FUNCTION_URL = import.meta.env.VITE_EDGE_FUNCTION;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const STORAGE_KEY_BASE = "resumable_uploads_v2";
 
 const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
