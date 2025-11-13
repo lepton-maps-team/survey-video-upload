@@ -50,7 +50,7 @@ function Home() {
     debounce((searchValue) => {
       fetchSurveys(searchValue);
     }, 300),
-    [user, isAdmin, isManager],
+    [user, isAdmin, isManager]
   );
 
   useEffect(() => {
@@ -124,7 +124,7 @@ function Home() {
               *,
               videos (*),
               gps_tracks (id, name, duration)
-            `,
+            `
             )
             .in("user_id", surveyorIdList);
 
@@ -165,7 +165,7 @@ function Home() {
     const toastId = toast.loading("Processing upload...");
     try {
       // Get public URL
-      const publicUrl = `https://pub-fb94265bf652416d905530670421a190.r2.dev/${uploadId}`;
+      const publicUrl = `https://bharatnet.r2.rio.software/${uploadId}`;
 
       // Create video record and update survey in a transaction
       const { data: videoData, error: videoError } = await supabase
@@ -205,8 +205,8 @@ function Home() {
                 is_video_uploaded: true,
                 videos: [{ id: videoData.id, name: fileName, url: publicUrl }],
               }
-            : survey,
-        ),
+            : survey
+        )
       );
 
       toast.success("Video uploaded successfully!", { id: toastId });
@@ -305,7 +305,7 @@ function Home() {
                         onClick={() =>
                           window.open(
                             `https://geotagvideo.vercel.app/preview/${survey.id}`,
-                            "_blank",
+                            "_blank"
                           )
                         }
                       >
