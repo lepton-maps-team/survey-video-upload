@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import VideoUpload from "../components/VideoUpload";
 import { Toaster, toast } from "react-hot-toast";
 import { useAuth } from "../contexts/AuthContext";
+import VideoUploadResumable from "../components/VideoUploadResumable";
 
 function Home() {
   const [surveys, setSurveys] = useState([]);
@@ -164,14 +165,14 @@ function Home() {
     const toastId = toast.loading("Processing upload...");
     try {
       // Get public URL
-      const publicUrl = `https://cdn.bharatnet.survey.rio.software/uploads/${uploadId}`;
+      const publicUrl = `https://bharatnet.r2.rio.software/${uploadId}`;
 
       // Create video record and update survey in a transaction
       const { data: videoData, error: videoError } = await supabase
         .from("videos")
         .insert({
           name: fileName,
-          url: `https://cdn.bharatnet.survey.rio.software/uploads/${uploadId}`,
+          url: publicUrl,
           survey_id: surveyId,
         })
         .select()
@@ -292,10 +293,11 @@ function Home() {
                   </td>
                   <td>
                     {survey.video_id == null ? (
-                      <VideoUpload
+                      <VideoUploadResumable
                         surveyId={survey.id}
                         onUploadComplete={handleUploadComplete}
                         accessToken={accessToken}
+                        folder={survey.id}
                       />
                     ) : (
                       <button
