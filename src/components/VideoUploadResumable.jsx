@@ -121,7 +121,7 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
 
   const getUploadParameters = async (file) => {
     const ts = new Date().toISOString();
-    const objectName = folder ? `${folder}/${file.name}` : file.name;
+    const objectName = folder;
     const body = await postEdge({
       fileName: objectName,
       fileSizeBytes: file.size,
@@ -134,7 +134,7 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
 
   const createMultipartUpload = async (file) => {
     const ts = new Date().toISOString();
-    const objectName = folder ? `${folder}/${file.name}` : file.name;
+    const objectName = folder;
     const body = await postEdge({
       fileName: objectName,
       fileSizeBytes: file.size,
@@ -146,7 +146,7 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
   };
 
   const signPart = async (file, { uploadId, partNumber }) => {
-    const objectName = folder ? `${folder}/${file.name}` : file.name;
+    const objectName = folder;
     const fileSizeBytes = file?.meta?.fileSizeBytes || file.size;
     const dateTimestamp = file?.meta?.dateTimestamp || new Date().toISOString();
 
@@ -162,7 +162,7 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
   };
 
   const completeMultipartUpload = async (file, uploadData) => {
-    const objectName = folder ? `${folder}/${file.name}` : file.name;
+    const objectName = folder;
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const body = await postEdge({
       fileName: objectName,
@@ -231,18 +231,18 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
           surveyId,
           file.name,
           { ...uploadData, parts: [] },
-          folder ? `${folder}/${file.name}` : file.name,
+          folder
         );
       }
 
       const uploadedPartNumbers = new Set(
-        (uploadData?.parts ?? []).map((p) => p.PartNumber),
+        (uploadData?.parts ?? []).map((p) => p.PartNumber)
       );
       const totalParts = Math.ceil(file.size / CHUNK_SIZE);
       const parts = [...(uploadData.parts || [])];
 
       setUploadProgress(
-        Math.round((uploadedPartNumbers.size / totalParts) * 100),
+        Math.round((uploadedPartNumbers.size / totalParts) * 100)
       );
 
       for (let i = 1; i <= totalParts; i += CONCURRENCY) {
@@ -283,7 +283,7 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
 
               const eTag = resp.headers.get("ETag")?.replaceAll('"', "");
               return { ETag: eTag, PartNumber: j };
-            })(),
+            })()
           );
         }
 
@@ -297,7 +297,7 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
               surveyId,
               file.name,
               { ...uploadData, parts },
-              folder ? `${folder}/${file.name}` : file.name,
+              folder
             );
           } else if (!canceledRef.current) {
             console.error("❌ Chunk upload failed:", r.reason);
