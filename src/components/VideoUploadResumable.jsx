@@ -1,4 +1,5 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import useNetworkStatus from "../hooks/useNetworkStatus";
 
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
 const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100MB
@@ -13,8 +14,18 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
   const [error, setError] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const { isOnline } = useNetworkStatus();
+  const [networkNotice, setNetworkNotice] = useState("");
+  const [fileStatus, setFileStatus] = useState(null);
   const canceledRef = useRef(false);
+  const pausedForOfflineRef = useRef(false);
+  const pendingAutoResumeRef = useRef(false);
+  const fileRef = useRef(null);
+  const uploadingRef = useRef(false);
   const abortControllers = useRef([]);
+  const handleUploadRef = useRef(null);
+
+  // console.log(uploading, "uploading");
 
   const getSurveyStorageKey = (surveyId) =>
     `${STORAGE_KEY_BASE}_${surveyId || "default"}`;
@@ -27,10 +38,31 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
     return uploads[getStorageKey(surveyId, fileName)];
   };
 
-  const saveUploadProgress = (surveyId, fileName, data, filePath = "") => {
+  useEffect(() => {
+    fileRef.current = file;
+  }, [file]);
+
+  useEffect(() => {
+    uploadingRef.current = uploading;
+  }, [uploading]);
+
+  // effect moved below
+
+  const saveUploadProgress = (
+    surveyId,
+    fileName,
+    data,
+    filePath = "",
+    fileMeta = {}
+  ) => {
     const surveyStorageKey = getSurveyStorageKey(surveyId);
     const uploads = JSON.parse(localStorage.getItem(surveyStorageKey) || "{}");
-    uploads[getStorageKey(surveyId, fileName)] = { ...data, filePath };
+    uploads[getStorageKey(surveyId, fileName)] = {
+      fileName,
+      ...fileMeta,
+      ...data,
+      filePath,
+    };
     localStorage.setItem(surveyStorageKey, JSON.stringify(uploads));
   };
 
@@ -39,6 +71,16 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
     const uploads = JSON.parse(localStorage.getItem(surveyStorageKey) || "{}");
     delete uploads[getStorageKey(surveyId, fileName)];
     localStorage.setItem(surveyStorageKey, JSON.stringify(uploads));
+  };
+
+  const matchesSavedUpload = (savedUpload, selectedFile) => {
+    if (!savedUpload || !selectedFile) return false;
+    const savedSize = Number(savedUpload.fileSizeBytes);
+    return (
+      savedUpload.fileName === selectedFile.name &&
+      Number.isFinite(savedSize) &&
+      savedSize === selectedFile.size
+    );
   };
 
   const validateFile = (selectedFile) => {
@@ -76,6 +118,8 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
     // Reset state
     setError("");
     setUploadProgress(0);
+    setFileStatus(null);
+    setNetworkNotice("");
     canceledRef.current = false;
 
     if (!selectedFile) {
@@ -93,28 +137,47 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
     setFile(selectedFile);
 
     const saved = loadSavedUpload(surveyId, selectedFile.name);
-    if (saved) {
-      // Restore meta info to file object
+    if (matchesSavedUpload(saved, selectedFile)) {
       selectedFile.meta = {
         dateTimestamp: saved.dateTimestamp || new Date().toISOString(),
         fileSizeBytes: saved.fileSizeBytes || selectedFile.size,
       };
+      setFileStatus({
+        type: "resume",
+        message: "Existing upload detected. Resuming with saved chunks.",
+      });
       console.log("Previous upload path:", saved.filePath);
+    } else {
+      if (saved) {
+        clearUploadRecord(surveyId, selectedFile.name);
+      }
+      selectedFile.meta = {
+        dateTimestamp: new Date().toISOString(),
+        fileSizeBytes: selectedFile.size,
+      };
+      setFileStatus({
+        type: "new",
+        message: "New upload detected. Starting a fresh session.",
+      });
     }
   };
 
   const postEdge = async (bodyObj) => {
-    const resp = await fetch(EDGE_FUNCTION_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        apikey: SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify(bodyObj),
-    });
-    if (!resp.ok) throw new Error(await resp.text());
-    return resp.json();
+    try {
+      const resp = await fetch(EDGE_FUNCTION_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(bodyObj),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      return resp.json();
+    } catch (err) {
+      setError(err);
+    }
   };
 
   const getUploadParameters = async (file) => {
@@ -176,6 +239,8 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
 
   const handleCancel = () => {
     canceledRef.current = true;
+    pendingAutoResumeRef.current = false;
+    pausedForOfflineRef.current = false;
     abortControllers.current.forEach((ctrl) => {
       try {
         ctrl.abort();
@@ -188,10 +253,18 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
 
   const handleUpload = async () => {
     if (!file) return;
+    if (!isOnline) {
+      setNetworkNotice("You are offline. Waiting for internet to resume…");
+      setError("You are offline. Reconnect to upload.");
+      return;
+    }
 
     setUploading(true);
     setError("");
+    setNetworkNotice("");
     canceledRef.current = false;
+    pausedForOfflineRef.current = false;
+    pendingAutoResumeRef.current = false;
     abortControllers.current = [];
 
     try {
@@ -211,25 +284,43 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
         if (!resp.ok) throw new Error(`Upload failed: ${resp.statusText}`);
 
         const filePath = extractFilePath(url, file.name);
-        saveUploadProgress(surveyId, file.name, {}, filePath);
+        saveUploadProgress(surveyId, file.name, {}, filePath, {
+          fileSizeBytes: file.size,
+          fileType: file.type,
+          dateTimestamp: file?.meta?.dateTimestamp || new Date().toISOString(),
+        });
 
         setUploadProgress(100);
         onUploadComplete(surveyId, file.name, filePath);
         clearUploadRecord(surveyId, file.name);
 
         console.log("✅ Single file upload complete");
+        pendingAutoResumeRef.current = false;
+        pausedForOfflineRef.current = false;
         return;
       }
 
       // Multipart
-      let uploadData = loadSavedUpload(surveyId, file.name);
+      const savedUpload = loadSavedUpload(surveyId, file.name);
+      const canResume = matchesSavedUpload(savedUpload, file);
+      let uploadData = canResume ? savedUpload : null;
+
+      if (!canResume && savedUpload) {
+        clearUploadRecord(surveyId, file.name);
+      }
+
       if (!uploadData || !uploadData.uploadId) {
         uploadData = await createMultipartUpload(file);
         saveUploadProgress(
           surveyId,
           file.name,
           { ...uploadData, parts: [] },
-          folder
+          folder,
+          {
+            fileSizeBytes: file.size,
+            fileType: file.type,
+            dateTimestamp: file?.meta?.dateTimestamp,
+          }
         );
       }
 
@@ -295,7 +386,12 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
               surveyId,
               file.name,
               { ...uploadData, parts },
-              folder
+              folder,
+              {
+                fileSizeBytes: file.size,
+                fileType: file.type,
+                dateTimestamp: file?.meta?.dateTimestamp,
+              }
             );
           } else if (!canceledRef.current) {
             console.error("❌ Chunk upload failed:", r.reason);
@@ -324,8 +420,16 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
       clearUploadRecord(surveyId, file.name);
 
       console.log("✅ Multipart upload complete:", completed);
+      pendingAutoResumeRef.current = false;
+      pausedForOfflineRef.current = false;
     } catch (err) {
-      if (err.name === "AbortError" || canceledRef.current) {
+      if (pausedForOfflineRef.current || !isOnline) {
+        console.log("⏸ Upload paused due to connectivity.", err?.message);
+        setError("");
+        setNetworkNotice(
+          "Connection lost. Upload paused. Waiting for internet…"
+        );
+      } else if (err.name === "AbortError" || canceledRef.current) {
         console.log("🚫 Upload aborted.");
         setError("Upload canceled");
       } else {
@@ -337,6 +441,41 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
       abortControllers.current = [];
     }
   };
+
+  useEffect(() => {
+    handleUploadRef.current = handleUpload;
+  });
+
+  useEffect(() => {
+    if (isOnline) {
+      setNetworkNotice("");
+      if (
+        pendingAutoResumeRef.current &&
+        fileRef.current &&
+        !uploadingRef.current
+      ) {
+        pendingAutoResumeRef.current = false;
+        pausedForOfflineRef.current = false;
+        setError("");
+        handleUploadRef.current?.();
+      }
+      return;
+    }
+
+    setNetworkNotice("Connection lost. Upload paused. Waiting for internet…");
+    if (uploadingRef.current) {
+      pausedForOfflineRef.current = true;
+      pendingAutoResumeRef.current = true;
+      abortControllers.current.forEach((ctrl) => {
+        try {
+          ctrl.abort();
+        } catch (err) {
+          console.error("Abort during offline transition failed:", err);
+        }
+      });
+      abortControllers.current = [];
+    }
+  }, [isOnline]);
 
   return (
     <div className=" rounded-md overflow-hidden hover:border-slate-300 transition-colors max-w-40">
@@ -375,6 +514,20 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
             )}
           </div>
         </label>
+        {fileStatus && (
+          <p
+            className={`text-xs mt-2 font-medium text-center ${
+              fileStatus.type === "resume" ? "text-green-600" : "text-slate-600"
+            }`}
+          >
+            {fileStatus.message}
+          </p>
+        )}
+        {networkNotice && (
+          <p className="text-xs text-amber-600 mt-2 font-medium text-center">
+            {networkNotice}
+          </p>
+        )}
         {error && (
           <p className="text-xs text-red-600 mt-2 font-medium text-center">
             {error}
@@ -386,9 +539,9 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
         {!uploading && (
           <button
             onClick={handleUpload}
-            disabled={!file || uploading || !!error}
+            disabled={!file || uploading || !!error || !isOnline}
             className={`text-sm rounded font-medium w-full p-2 transition-all ${
-              !file || uploading || !!error
+              !file || uploading || !!error || !isOnline
                 ? "bg-slate-300 text-slate-500 cursor-not-allowed"
                 : "bg-blue-600 hover:bg-blue-700 "
             }`}
@@ -413,6 +566,8 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
             <p className="text-xs font-medium text-slate-700">
               {canceledRef.current
                 ? "Canceling..."
+                : !isOnline && networkNotice
+                ? networkNotice
                 : `Uploading: ${uploadProgress}%`}
             </p>
           </div>
