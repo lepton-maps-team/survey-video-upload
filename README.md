@@ -10,7 +10,7 @@ Currently, two official plugins are available:
 # Survey Video Manager 
 
 This application allows users to manage survey videos with role-based access control.
-
+ 
 ## Login System Implementation 
  
 The application now uses a custom login system that authenticates against the `users` table in Supabase without using Supabase Auth. The system includes:
