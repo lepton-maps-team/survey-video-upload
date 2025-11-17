@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import useNetworkStatus from "../hooks/useNetworkStatus";
+import { supabase } from "../lib/supabase";
 
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
 const MULTIPART_THRESHOLD = 100 * 1024 * 1024; // 100MB
@@ -423,22 +424,29 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
       pendingAutoResumeRef.current = false;
       pausedForOfflineRef.current = false;
     } catch (err) {
+      let error = "";
       if (pausedForOfflineRef.current || !isOnline) {
         console.log("⏸ Upload paused due to connectivity.", err?.message);
         setError("");
         setNetworkNotice(
           "Connection lost. Upload paused. Waiting for internet…"
         );
+        error = "Connection lost";
       } else if (err.name === "AbortError" || canceledRef.current) {
         console.log("🚫 Upload aborted.");
         setError("Upload canceled");
+        error = "upload cancelled";
       } else {
         console.error("❌ Upload failed:", err);
         setError(err.message || "Upload failed");
+        error = JSON.stringify(err);
       }
     } finally {
       setUploading(false);
       abortControllers.current = [];
+      await supabase
+        .from("upload_errors")
+        .insert({ surveyId: surveyId, error: error });
     }
   };
 

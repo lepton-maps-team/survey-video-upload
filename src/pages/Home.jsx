@@ -165,7 +165,7 @@ function Home() {
     const toastId = toast.loading("Processing upload...");
     try {
       // Get public URL
-      const publicUrl = `https://bharatnet.r2.rio.software/${uploadId}`;
+      const publicUrl = `${import.meta.env.VITE_R2_URL}/${uploadId}`;
 
       // Create video record and update survey in a transaction
       const { data: videoData, error: videoError } = await supabase
