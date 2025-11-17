@@ -446,7 +446,7 @@ const VideoUploadResumable = ({ surveyId, onUploadComplete, folder = "" }) => {
       abortControllers.current = [];
       await supabase
         .from("upload_errors")
-        .insert({ surveyId: surveyId, error: error });
+        .insert({ survey_id: surveyId, error: error });
     }
   };
 
